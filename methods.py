@@ -25,26 +25,22 @@ os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
+# ════════════════════════════════════════════════════════════════
 # Helper utilities
+# ════════════════════════════════════════════════════════════════
+
 def get_wait(driver, timeout=15):
-    """Return a WebDriverWait instance for the driver."""
     return WebDriverWait(driver, timeout)
 
 
 def scroll_into_view(driver, element):
-    """Scroll element into view (best-effort)."""
     try:
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", element)
     except Exception:
-        # not critical; swallow to keep robustness
         pass
 
 
 def safe_click(driver, by, locator, timeout=15, attempts=2):
-    """
-    Wait for element to be clickable, scroll into view, and click.
-    Retries once on StaleElementReferenceException.
-    """
     wait = get_wait(driver, timeout)
     last_exc = None
     for attempt in range(attempts):
@@ -61,9 +57,6 @@ def safe_click(driver, by, locator, timeout=15, attempts=2):
 
 
 def safe_type(driver, by, locator, text, clear=True, timeout=15):
-    """
-    Wait for element to be present/clickable, optionally clear, then send keys.
-    """
     wait = get_wait(driver, timeout)
     elem = wait.until(EC.element_to_be_clickable((by, locator)))
     scroll_into_view(driver, elem)
@@ -76,7 +69,6 @@ def safe_type(driver, by, locator, text, clear=True, timeout=15):
 
 
 def click_if_present(driver, by, locator, timeout=5):
-    """Click element if present and clickable within timeout; otherwise no-op."""
     try:
         safe_click(driver, by, locator, timeout=timeout)
         return True
@@ -85,13 +77,7 @@ def click_if_present(driver, by, locator, timeout=5):
 
 
 def type_and_select_first_option(driver, input_xpath, value, first_option_xpath=None, timeout=15):
-    """
-    Type into an autocomplete input and select the first suggestion.
-    If first_option_xpath is provided, click it when visible.
-    Otherwise, fallback to ARROWDOWN + ENTER.
-    """
     wait = get_wait(driver, timeout)
-    # focus and type
     input_el = wait.until(EC.element_to_be_clickable((By.XPATH, input_xpath)))
     scroll_into_view(driver, input_el)
     try:
@@ -101,7 +87,6 @@ def type_and_select_first_option(driver, input_xpath, value, first_option_xpath=
     input_el.click()
     input_el.send_keys(value)
 
-    # if a specific first option locator is provided, try clicking it
     if first_option_xpath and first_option_xpath != "PASTE_XPATH_HERE":
         try:
             first = wait.until(EC.visibility_of_element_located((By.XPATH, first_option_xpath)))
@@ -109,12 +94,9 @@ def type_and_select_first_option(driver, input_xpath, value, first_option_xpath=
             first.click()
             return
         except TimeoutException:
-            logging.info("First-option xpath provided but not visible; falling back to keyboard selection")
+            logging.info("First-option xpath not visible; falling back to keyboard selection")
 
-    # fallback keyboard selection
-    # Wait briefly for suggestions to appear (explicit wait for any suggestion)
     try:
-        # try to wait for a common suggestion element near input (not provided), short sleep avoided
         input_el.send_keys(Keys.ARROW_DOWN)
         input_el.send_keys(Keys.ENTER)
     except Exception as e:
@@ -123,25 +105,17 @@ def type_and_select_first_option(driver, input_xpath, value, first_option_xpath=
 
 
 def set_date(driver, date_xpath, date_value, timeout=15):
-    """
-    Set a date in xdsoft DateTimePicker.
-    date_value format: DD-MM-YYYY (e.g. "28-02-2026")
-    Clicks the input to open the calendar, navigates to correct month/year,
-    then clicks the target day cell.
-    """
     import time as _time
 
-    # Parse date_value (DD-MM-YYYY)
     parts = date_value.split("-")
     day = int(parts[0])
-    month = int(parts[1]) - 1  # xdsoft uses 0-indexed months
+    month = int(parts[1]) - 1
     year = int(parts[2])
 
     wait = get_wait(driver, timeout)
     elem = wait.until(EC.element_to_be_clickable((By.XPATH, date_xpath)))
     scroll_into_view(driver, elem)
 
-    # Click date input and wait for picker to open (retry if needed)
     picker = None
     for attempt in range(3):
         elem.click()
@@ -157,27 +131,19 @@ def set_date(driver, date_xpath, date_value, timeout=15):
         raise Exception("Date picker failed to open after 3 attempts")
     logging.info("xdsoft datepicker opened")
 
-    # Navigate to correct month/year using prev/next buttons
-    max_clicks = 24  # safety limit
+    max_clicks = 24
+    month_names = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ]
     for _ in range(max_clicks):
-        # Read current displayed month and year from the picker
-        current_month_text = picker.find_element(
-            By.CSS_SELECTOR, ".xdsoft_label.xdsoft_month span"
-        ).text
-        current_year_text = picker.find_element(
-            By.CSS_SELECTOR, ".xdsoft_label.xdsoft_year span"
-        ).text
-
-        month_names = [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"
-        ]
+        current_month_text = picker.find_element(By.CSS_SELECTOR, ".xdsoft_label.xdsoft_month span").text
+        current_year_text = picker.find_element(By.CSS_SELECTOR, ".xdsoft_label.xdsoft_year span").text
         current_month_idx = month_names.index(current_month_text)
         current_year = int(current_year_text)
 
-        # Compare: target is (year, month) vs (current_year, current_month_idx)
         if current_year == year and current_month_idx == month:
-            break  # correct month/year displayed
+            break
         elif (current_year, current_month_idx) < (year, month):
             picker.find_element(By.CSS_SELECTOR, "button.xdsoft_next").click()
             _time.sleep(0.3)
@@ -187,41 +153,32 @@ def set_date(driver, date_xpath, date_value, timeout=15):
     else:
         raise Exception(f"Could not navigate to {date_value} in datepicker after {max_clicks} clicks")
 
-    # Click the target day cell
     day_cell = picker.find_element(
         By.CSS_SELECTOR,
         f"td.xdsoft_date[data-date='{day}'][data-month='{month}'][data-year='{year}']"
     )
     scroll_into_view(driver, day_cell)
     day_cell.click()
-    logging.info("Date selected in xdsoft picker: %s", date_value)
+    logging.info("Date selected: %s", date_value)
 
 
 def set_time(driver, time_xpath, time_value, timeout=15):
-    """
-    Set time using the custom dropdown with select_hour and select_minute.
-    time_value format: "HH:MM" or "HH:MM AM/PM" (e.g. "10:30 AM", "13:00")
-    Clicks the time input to open the dropdown, then selects hour and minute.
-    """
     import time as _time
     from selenium.webdriver.support.ui import Select
 
-    # Parse time_value — strip AM/PM, split HH:MM
     clean = time_value.strip().upper().replace(" AM", "").replace(" PM", "")
     h, m = clean.split(":")
-    hour_str = h.strip().zfill(2)     # "10"
-    minute_str = m.strip().zfill(2)   # "30"
+    hour_str = h.strip().zfill(2)
+    minute_str = m.strip().zfill(2)
 
     wait = get_wait(driver, timeout)
 
-    # Close any open date picker first by clicking elsewhere
     try:
         driver.find_element(By.TAG_NAME, "body").click()
         _time.sleep(0.3)
     except Exception:
         pass
 
-    # Click the Start Time input to open the dropdown
     time_div = wait.until(EC.element_to_be_clickable((By.XPATH, time_xpath)))
     scroll_into_view(driver, time_div)
     try:
@@ -231,26 +188,22 @@ def set_time(driver, time_xpath, time_value, timeout=15):
         time_div.click()
     _time.sleep(1)
 
-    # Wait for the dropdown to appear
     dropdown = wait.until(EC.visibility_of_element_located(
         (By.CSS_SELECTOR, "div.dropdown-menu.show")
     ))
     logging.info("Time dropdown opened")
 
-    # Select hour from select_hour dropdown
     hour_select = dropdown.find_element(By.CSS_SELECTOR, "select.select_hour")
     Select(hour_select).select_by_value(hour_str)
     logging.info("Hour selected: %s", hour_str)
     _time.sleep(0.5)
 
-    # Select minute (dropdown may close after hour selection, so re-open if needed)
     try:
         dropdown = driver.find_element(By.CSS_SELECTOR, "div.dropdown-menu.show")
         minute_select = dropdown.find_element(By.CSS_SELECTOR, "select.select_minute")
         Select(minute_select).select_by_value(minute_str)
         logging.info("Minute selected: %s", minute_str)
     except (NoSuchElementException, StaleElementReferenceException):
-        # Dropdown closed, re-open by clicking time input
         try:
             time_input = time_div.find_element(By.TAG_NAME, "input")
             time_input.click()
@@ -264,7 +217,6 @@ def set_time(driver, time_xpath, time_value, timeout=15):
         Select(minute_select).select_by_value(minute_str)
         logging.info("Minute selected (after reopen): %s", minute_str)
 
-    # Close dropdown by clicking elsewhere
     try:
         driver.find_element(By.TAG_NAME, "body").click()
         _time.sleep(0.3)
@@ -274,249 +226,226 @@ def set_time(driver, time_xpath, time_value, timeout=15):
     logging.info("Time selected: %s", time_value)
 
 
-# High-level flows
+# ════════════════════════════════════════════════════════════════
+# STEP 1 — Open site + click the correct tab
+# ════════════════════════════════════════════════════════════════
+
 def open_site(driver):
-    """Open base URL and wait for page load (basic)."""
     logging.info("Opening site: %s", locators.URL)
     driver.get(locators.URL)
 
 
-def ensure_airport_transfer_tab(driver):
-    """Ensure the Airport Transfer tab is active; click if present and not active."""
-    wait = get_wait(driver)
-    try:
-        tab = wait.until(EC.presence_of_element_located((By.XPATH, locators.AIRPORT_TRANSFER_TAB_XPATH)))
-        # if class indicates active we assume active; else click
-        try:
-            classes = tab.get_attribute("class") or ""
-            if "active" not in classes.lower():
-                logging.info("Activating Airport Transfer tab")
-                safe_click(driver, By.XPATH, locators.AIRPORT_TRANSFER_TAB_XPATH)
-            else:
-                logging.info("Airport Transfer tab already active")
-        except Exception:
-            logging.info("Could not determine tab state, attempting click")
-            safe_click(driver, By.XPATH, locators.AIRPORT_TRANSFER_TAB_XPATH)
-    except TimeoutException:
-        logging.info("Airport transfer tab locator not found; assuming page defaults to airport transfer")
+def _get_service_type():
+    """Return normalised service type string."""
+    return testdata.SERVICE_TYPE.strip().lower()
 
 
-def fill_airport_transfer_form(driver):
-    """Fill the Airport Transfer form using testdata + locators."""
-    # Drop To Airport: click dropdown and select option by visible text
-    logging.info("Selecting Drop To Airport -> %s", testdata.DROP_TO_AIRPORT_VALUE)
-    safe_click(driver, By.XPATH, locators.DROP_TO_AIRPORT_XPATH)
+def click_service_tab(driver):
+    """Click the correct tab based on SERVICE_TYPE."""
+    stype = _get_service_type()
+    logging.info("Service type selected: %s", testdata.SERVICE_TYPE)
 
-    # attempt to use provided option template if present
-    option_template = locators.DROP_TO_AIRPORT_OPTION_XPATH_TEMPLATE
-    if option_template and "PASTE_XPATH_HERE" not in option_template:
-        option_xpath = option_template.format(testdata.DROP_TO_AIRPORT_VALUE)
-        safe_click(driver, By.XPATH, option_xpath)
+    if "airport" in stype:
+        safe_click(driver, By.XPATH, locators.AIRPORT_TRANSFER_TAB_XPATH)
+    elif "local" in stype:
+        safe_click(driver, By.XPATH, locators.LOCAL_RENTAL_TAB_XPATH)
+    elif "outstation" in stype:
+        safe_click(driver, By.XPATH, locators.OUTSTATION_TRIP_TAB_XPATH)
+    elif "self" in stype:
+        safe_click(driver, By.XPATH, locators.SELF_DRIVE_TAB_XPATH)
     else:
-        # fallback: try a generic list item match by text
-        generic_option = f"//li[normalize-space()='{testdata.DROP_TO_AIRPORT_VALUE}']"
-        safe_click(driver, By.XPATH, generic_option)
+        raise ValueError(f"Unknown SERVICE_TYPE: '{testdata.SERVICE_TYPE}'. "
+                         "Use: Airport Transfer | Local Rental | Outstation Trip | Self Drive")
 
-    # Drop Airport/City: type and select first suggestion
-    logging.info("Typing Drop Airport/City -> %s", testdata.DROP_AIRPORT_CITY_VALUE)
+
+# ════════════════════════════════════════════════════════════════
+# STEP 2 — Fill the search form (per service type)
+# ════════════════════════════════════════════════════════════════
+
+def fill_search_form(driver):
+    """Auto-dispatch to the correct form filler based on SERVICE_TYPE."""
+    stype = _get_service_type()
+    if "airport" in stype:
+        _fill_airport_transfer_form(driver)
+    elif "local" in stype:
+        _fill_local_rental_form(driver)
+    elif "outstation" in stype:
+        _fill_outstation_trip_form(driver)
+    elif "self" in stype:
+        _fill_self_drive_form(driver)
+
+
+def _fill_airport_transfer_form(driver):
+    """Fill Airport Transfer: direction, city, date, time."""
+    logging.info("Selecting direction -> %s", testdata.AIRPORT_DIRECTION)
+    safe_click(driver, By.XPATH, locators.DIRECTION_SELECT_XPATH)
+
+    direction_lower = testdata.AIRPORT_DIRECTION.strip().lower()
+    option_xpath = locators.DIRECTION_OPTION_XPATH_TEMPLATE.format(direction_lower)
+    safe_click(driver, By.XPATH, option_xpath)
+
+    logging.info("Typing City -> %s", testdata.AIRPORT_CITY)
     type_and_select_first_option(
         driver,
-        locators.DROP_AIRPORT_CITY_XPATH,
-        testdata.DROP_AIRPORT_CITY_VALUE,
-        first_option_xpath=locators.DROP_AIRPORT_CITY_FIRST_OPTION_XPATH,
+        locators.AIRPORT_CITY_XPATH,
+        testdata.AIRPORT_CITY,
+        first_option_xpath=locators.AIRPORT_CITY_FIRST_OPTION_XPATH,
     )
 
-    # Pickup Date
-    logging.info("Setting pickup date -> %s", testdata.PICKUP_DATE_VALUE)
-    set_date(driver, locators.PICKUP_DATE_XPATH, testdata.PICKUP_DATE_VALUE)
+    logging.info("Setting date -> %s", testdata.AIRPORT_DATE)
+    set_date(driver, locators.AIRPORT_DATE_XPATH, testdata.AIRPORT_DATE)
 
-    # Start Time
-    logging.info("Setting start time -> %s", testdata.START_TIME_VALUE)
-    set_time(driver, locators.START_TIME_XPATH, testdata.START_TIME_VALUE)
+    logging.info("Setting time -> %s", testdata.AIRPORT_TIME)
+    set_time(driver, locators.AIRPORT_TIME_XPATH, testdata.AIRPORT_TIME)
 
 
-def click_search_ride(driver):
-    """Click Search Your Ride and check for error toasts/popups."""
+def _fill_local_rental_form(driver):
+    """Fill Local Rental: city, package, date, time."""
+    logging.info("Typing City -> %s", testdata.LOCAL_RENTAL_CITY)
+    type_and_select_first_option(
+        driver,
+        locators.LOCAL_RENTAL_CITY_XPATH,
+        testdata.LOCAL_RENTAL_CITY,
+        first_option_xpath=locators.LOCAL_RENTAL_CITY_FIRST_OPTION_XPATH,
+    )
+
+    logging.info("Selecting Package -> %s", testdata.LOCAL_RENTAL_PACKAGE)
+    safe_click(driver, By.XPATH, locators.LOCAL_RENTAL_PACKAGE_XPATH)
+    package_lower = testdata.LOCAL_RENTAL_PACKAGE.strip().lower()
+    option_xpath = locators.LOCAL_RENTAL_PACKAGE_OPTION_XPATH_TEMPLATE.format(package_lower)
+    safe_click(driver, By.XPATH, option_xpath)
+
+    logging.info("Setting date -> %s", testdata.LOCAL_RENTAL_DATE)
+    set_date(driver, locators.LOCAL_RENTAL_DATE_XPATH, testdata.LOCAL_RENTAL_DATE)
+
+    logging.info("Setting time -> %s", testdata.LOCAL_RENTAL_TIME)
+    set_time(driver, locators.LOCAL_RENTAL_TIME_XPATH, testdata.LOCAL_RENTAL_TIME)
+
+
+def _fill_outstation_trip_form(driver):
+    """Fill Outstation Trip: trip type, from city, to city, date, time."""
+    # Trip Type (case-insensitive)
+    logging.info("Selecting Trip Type -> %s", testdata.OUTSTATION_TRIP_TYPE)
+    safe_click(driver, By.XPATH, locators.OUTSTATION_TRIP_TYPE_XPATH)
+    trip_type_lower = testdata.OUTSTATION_TRIP_TYPE.strip().lower()
+    option_xpath = locators.OUTSTATION_TRIP_TYPE_OPTION_XPATH_TEMPLATE.format(trip_type_lower)
+    safe_click(driver, By.XPATH, option_xpath)
+
+    # From City
+    logging.info("Typing From City -> %s", testdata.OUTSTATION_FROM_CITY)
+    type_and_select_first_option(
+        driver,
+        locators.OUTSTATION_FROM_CITY_XPATH,
+        testdata.OUTSTATION_FROM_CITY,
+        first_option_xpath=locators.OUTSTATION_FROM_CITY_FIRST_OPTION_XPATH,
+    )
+
+    # To City
+    logging.info("Typing To City -> %s", testdata.OUTSTATION_TO_CITY)
+    type_and_select_first_option(
+        driver,
+        locators.OUTSTATION_TO_CITY_XPATH,
+        testdata.OUTSTATION_TO_CITY,
+        first_option_xpath=locators.OUTSTATION_TO_CITY_FIRST_OPTION_XPATH,
+    )
+
+    # Date
+    logging.info("Setting date -> %s", testdata.OUTSTATION_DATE)
+    set_date(driver, locators.OUTSTATION_DATE_XPATH, testdata.OUTSTATION_DATE)
+
+    # Time
+    logging.info("Setting time -> %s", testdata.OUTSTATION_TIME)
+    set_time(driver, locators.OUTSTATION_TIME_XPATH, testdata.OUTSTATION_TIME)
+
+
+def _fill_self_drive_form(driver):
+    """Fill Self Drive query form: name, mobile, email, city, vehicle type, date, days."""
     import time as _time
 
-    logging.info("Clicking Search Your Ride")
-    safe_click(driver, By.XPATH, locators.SEARCH_RIDE_BUTTON_XPATH)
+    logging.info("Filling Self Drive query form")
 
-    # Wait briefly for any error toast/popup to appear
+    # Name
+    safe_type(driver, By.XPATH, locators.SELF_DRIVE_NAME_XPATH, testdata.SELF_DRIVE_NAME)
+
+    # Mobile
+    safe_type(driver, By.XPATH, locators.SELF_DRIVE_MOBILE_XPATH, testdata.SELF_DRIVE_MOBILE)
+
+    # Email
+    safe_type(driver, By.XPATH, locators.SELF_DRIVE_EMAIL_XPATH, testdata.SELF_DRIVE_EMAIL)
+
+    # City
+    safe_type(driver, By.XPATH, locators.SELF_DRIVE_CITY_XPATH, testdata.SELF_DRIVE_CITY)
+
+    # Vehicle Type
+    safe_type(driver, By.XPATH, locators.SELF_DRIVE_VEHICLE_TYPE_XPATH, testdata.SELF_DRIVE_VEHICLE_TYPE)
+
+    # Travel Date
+    set_date(driver, locators.SELF_DRIVE_TRAVEL_DATE_XPATH, testdata.SELF_DRIVE_TRAVEL_DATE)
+
+    # No. of days
+    safe_type(driver, By.XPATH, locators.SELF_DRIVE_NO_OF_DAYS_XPATH, testdata.SELF_DRIVE_NO_OF_DAYS)
+    _time.sleep(0.5)
+
+
+def submit_self_drive_query(driver):
+    """Click Submit your Query button for Self Drive."""
+    import time as _time
+    logging.info("Clicking Submit your Query")
+    safe_click(driver, By.XPATH, locators.SELF_DRIVE_SUBMIT_BUTTON_XPATH)
+    _time.sleep(2)
+    logging.info("Self Drive query submitted")
+
+
+def is_self_drive():
+    """Check if the current service type is Self Drive."""
+    return "self" in _get_service_type()
+
+
+# ════════════════════════════════════════════════════════════════
+# STEP 3 — Click Search Your Ride
+# ════════════════════════════════════════════════════════════════
+
+def click_search_ride(driver):
+    """Click the Search button for the active service type."""
+    import time as _time
+
+    stype = _get_service_type()
+    if "local" in stype:
+        button_xpath = locators.LOCAL_RENTAL_SEARCH_BUTTON_XPATH
+    elif "outstation" in stype:
+        button_xpath = locators.OUTSTATION_SEARCH_BUTTON_XPATH
+    else:
+        button_xpath = locators.AIRPORT_SEARCH_BUTTON_XPATH
+
+    logging.info("Clicking Search Your Ride")
+    safe_click(driver, By.XPATH, button_xpath)
+
     _time.sleep(2)
 
-    # Check for error toasts (e.g. "Please select pickup date")
     error_selectors = [
-        "div.toast-body",
-        "div.toast-message",
-        "div.Toastify__toast--error",
-        "div.alert-danger",
-        "div.swal2-popup",
-        "div.toast.show",
+        "div.toast-body", "div.toast-message", "div.Toastify__toast--error",
+        "div.alert-danger", "div.swal2-popup", "div.toast.show",
     ]
     for sel in error_selectors:
         try:
             error_el = driver.find_element(By.CSS_SELECTOR, sel)
             if error_el.is_displayed():
                 error_text = error_el.text.strip()
-                logging.error("Error toast detected after Search: %s", error_text)
+                logging.error("Error toast detected: %s", error_text)
                 raise Exception(f"Search Your Ride error: {error_text}")
         except NoSuchElementException:
             continue
 
-    logging.info("Search Your Ride clicked — no error toast detected")
+    logging.info("Search clicked — no error toast detected")
 
 
-def click_book_now(driver, timeout=15):
-    """Click 'Book Now' for the car specified in testdata.BOOK_CAR_NAME."""
-    import time as _time
-    car_name = testdata.BOOK_CAR_NAME
-    logging.info("Looking for car: %s", car_name)
-    wait = get_wait(driver, timeout)
-
-    # Try to find Book Now button next to the chosen car
-    car_xpath = locators.BOOK_NOW_BUTTON_XPATH_TEMPLATE.format(car_name)
-    try:
-        book_btn = wait.until(EC.element_to_be_clickable((By.XPATH, car_xpath)))
-        logging.info("Found '%s' - clicking Book Now", car_name)
-    except TimeoutException:
-        logging.warning("Car '%s' not found in results, clicking first available car", car_name)
-        book_btn = wait.until(EC.element_to_be_clickable((By.XPATH, locators.BOOK_NOW_BUTTON_FALLBACK_XPATH)))
-
-    scroll_into_view(driver, book_btn)
-    book_btn.click()
-    logging.info("Book Now clicked for '%s', waiting for next page to load", car_name)
-    _time.sleep(3)
-
-
-def fill_mobile_and_send_otp(driver, timeout=15):
-    """Fill mobile number on Sign In with OTP page and click SEND OTP."""
-    logging.info("Filling mobile number: %s", testdata.MOBILE_NUMBER)
-    wait = get_wait(driver, timeout)
-
-    # Wait for the mobile number input to appear
-    mobile_input = wait.until(EC.element_to_be_clickable((By.XPATH, locators.MOBILE_NUMBER_INPUT_XPATH)))
-    scroll_into_view(driver, mobile_input)
-    mobile_input.clear()
-    mobile_input.send_keys(testdata.MOBILE_NUMBER)
-    logging.info("Mobile number entered: %s", testdata.MOBILE_NUMBER)
-
-    # Click SEND OTP
-    safe_click(driver, By.XPATH, locators.SEND_OTP_BUTTON_XPATH)
-    logging.info("SEND OTP clicked")
-
-
-def fill_otp_and_verify(driver, timeout=15):
-    """Fill OTP from testdata and click VERIFY OTP."""
-    import time as _time
-
-    wait = get_wait(driver, timeout)
-
-    # Wait for OTP input to be fully ready
-    _time.sleep(2)
-    otp_input = wait.until(EC.element_to_be_clickable((By.XPATH, locators.OTP_INPUT_XPATH)))
-    logging.info("OTP input field visible.")
-
-    # Click on OTP input first, then type
-    scroll_into_view(driver, otp_input)
-    otp_input.click()
-    _time.sleep(0.5)
-
-    # Fill OTP from testdata
-    otp_value = testdata.OTP_VALUE
-    logging.info("Entering OTP: %s", otp_value)
-    otp_input.send_keys(otp_value)
-    _time.sleep(1)
-
-    # Verify OTP was actually typed
-    filled_value = otp_input.get_attribute("value") or ""
-    logging.info("OTP field value after typing: '%s'", filled_value)
-    if len(filled_value) < 6:
-        logging.warning("OTP not filled properly, retrying...")
-        otp_input.clear()
-        _time.sleep(0.5)
-        otp_input.send_keys(otp_value)
-        _time.sleep(1)
-
-    # Click VERIFY OTP
-    safe_click(driver, By.XPATH, locators.VERIFY_OTP_BUTTON_XPATH)
-    logging.info("VERIFY OTP clicked")
-    _time.sleep(3)
-
-
-def fill_booking_form(driver, timeout=15):
-    """Fill the booking form: last name, pickup location, pickup address."""
-    import time as _time
-
-    wait = get_wait(driver, timeout)
-
-    # Fill Last Name
-    logging.info("Filling Last Name: %s", testdata.LAST_NAME)
-    last_name = wait.until(EC.element_to_be_clickable((By.XPATH, locators.LAST_NAME_XPATH)))
-    scroll_into_view(driver, last_name)
-    last_name.click()
-    last_name.clear()
-    last_name.send_keys(testdata.LAST_NAME)
-
-    # Fill Pickup Location (Google Places autocomplete)
-    logging.info("Filling Pickup Location: %s", testdata.PICKUP_LOCATION)
-    pickup_loc = wait.until(EC.element_to_be_clickable((By.XPATH, locators.PICKUP_LOCATION_XPATH)))
-    scroll_into_view(driver, pickup_loc)
-    pickup_loc.click()
-    pickup_loc.clear()
-    pickup_loc.send_keys(testdata.PICKUP_LOCATION)
-    _time.sleep(2)
-    # Select first Google suggestion
-    try:
-        first_suggestion = wait.until(EC.visibility_of_element_located(
-            (By.CSS_SELECTOR, "div.pac-container div.pac-item:first-child")
-        ))
-        first_suggestion.click()
-        logging.info("Pickup Location suggestion selected")
-    except TimeoutException:
-        # Fallback: press arrow down + enter
-        pickup_loc.send_keys(Keys.ARROW_DOWN)
-        pickup_loc.send_keys(Keys.ENTER)
-        logging.info("Pickup Location selected via keyboard")
-    _time.sleep(1)
-
-    # Fill Pickup Address
-    logging.info("Filling Pickup Address: %s", testdata.PICKUP_ADDRESS)
-    pickup_addr = wait.until(EC.element_to_be_clickable((By.XPATH, locators.PICKUP_ADDRESS_XPATH)))
-    scroll_into_view(driver, pickup_addr)
-    pickup_addr.click()
-    pickup_addr.clear()
-    pickup_addr.send_keys(testdata.PICKUP_ADDRESS)
-    _time.sleep(0.5)
-
-
-def tick_tnc_and_pay(driver, timeout=15):
-    """Tick the T&C checkbox and click the Pay button."""
-    import time as _time
-
-    wait = get_wait(driver, timeout)
-
-    # Tick T&C checkbox
-    logging.info("Ticking T&C checkbox")
-    checkbox = wait.until(EC.presence_of_element_located((By.XPATH, locators.TNC_CHECKBOX_XPATH)))
-    scroll_into_view(driver, checkbox)
-    if not checkbox.is_selected():
-        # Click via JS since checkbox may be hidden behind label
-        driver.execute_script("arguments[0].click();", checkbox)
-    logging.info("T&C checkbox ticked")
-    _time.sleep(1)
-
-    # Click Pay button
-    logging.info("Clicking Pay button")
-    safe_click(driver, By.XPATH, locators.PAY_BUTTON_XPATH)
-    logging.info("Pay button clicked")
-    _time.sleep(3)
-
+# ════════════════════════════════════════════════════════════════
+# STEP 4 — Validate results
+# ════════════════════════════════════════════════════════════════
 
 def assert_results_loaded(driver, timeout=15):
-    """Validate results loaded or gracefully handle 'no rides' message."""
     wait = get_wait(driver, timeout)
-    logging.info("Waiting for results container or unique page element")
+    logging.info("Waiting for results")
     try:
         wait.until(EC.visibility_of_element_located((By.XPATH, locators.RESULTS_CONTAINER_XPATH)))
         logging.info("Results container visible")
@@ -527,11 +456,238 @@ def assert_results_loaded(driver, timeout=15):
             logging.info("Results page unique element visible")
             return True
         except TimeoutException:
-            # check for no rides message
             try:
                 no_rides = driver.find_element(By.XPATH, locators.NO_RIDES_MESSAGE_XPATH)
-                logging.info("No rides message displayed: %s", no_rides.text)
+                logging.info("No rides message: %s", no_rides.text)
                 return False
             except Exception:
                 logging.error("Results did not load and no 'no rides' message found")
                 raise
+
+
+# ════════════════════════════════════════════════════════════════
+# STEP 5 — Click Book Now
+# ════════════════════════════════════════════════════════════════
+
+def click_book_now(driver, timeout=15):
+    """Click Book Now for the car matching the active service type."""
+    import time as _time
+
+    stype = _get_service_type()
+    if "local" in stype:
+        car_name = testdata.LOCAL_RENTAL_CAR_NAME
+    elif "outstation" in stype:
+        car_name = testdata.OUTSTATION_CAR_NAME
+    else:
+        car_name = testdata.AIRPORT_CAR_NAME
+
+    logging.info("Looking for car: %s", car_name)
+    wait = get_wait(driver, timeout)
+
+    car_xpath = locators.BOOK_NOW_BUTTON_XPATH_TEMPLATE.format(car_name.strip().lower())
+    try:
+        book_btn = wait.until(EC.element_to_be_clickable((By.XPATH, car_xpath)))
+        logging.info("Found '%s' - clicking Book Now", car_name)
+    except TimeoutException:
+        logging.warning("Car '%s' not found, clicking first available", car_name)
+        book_btn = wait.until(EC.element_to_be_clickable((By.XPATH, locators.BOOK_NOW_BUTTON_FALLBACK_XPATH)))
+
+    scroll_into_view(driver, book_btn)
+    book_btn.click()
+    logging.info("Book Now clicked")
+    _time.sleep(3)
+
+
+# ════════════════════════════════════════════════════════════════
+# STEP 6 — OTP (mobile + verify)
+# ════════════════════════════════════════════════════════════════
+
+def fill_mobile_and_send_otp(driver, timeout=15):
+    logging.info("Filling mobile number: %s", testdata.MOBILE_NUMBER)
+    wait = get_wait(driver, timeout)
+    mobile_input = wait.until(EC.element_to_be_clickable((By.XPATH, locators.MOBILE_NUMBER_INPUT_XPATH)))
+    scroll_into_view(driver, mobile_input)
+    mobile_input.clear()
+    mobile_input.send_keys(testdata.MOBILE_NUMBER)
+    safe_click(driver, By.XPATH, locators.SEND_OTP_BUTTON_XPATH)
+    logging.info("SEND OTP clicked")
+
+
+def fill_otp_and_verify(driver, timeout=15):
+    import time as _time
+    wait = get_wait(driver, timeout)
+
+    _time.sleep(2)
+    otp_input = wait.until(EC.element_to_be_clickable((By.XPATH, locators.OTP_INPUT_XPATH)))
+    scroll_into_view(driver, otp_input)
+    otp_input.click()
+    _time.sleep(0.5)
+
+    otp_value = testdata.OTP_VALUE
+    logging.info("Entering OTP: %s", otp_value)
+    otp_input.send_keys(otp_value)
+    _time.sleep(1)
+
+    filled_value = otp_input.get_attribute("value") or ""
+    if len(filled_value) < 6:
+        logging.warning("OTP not filled properly, retrying...")
+        otp_input.clear()
+        _time.sleep(0.5)
+        otp_input.send_keys(otp_value)
+        _time.sleep(1)
+
+    safe_click(driver, By.XPATH, locators.VERIFY_OTP_BUTTON_XPATH)
+    logging.info("VERIFY OTP clicked")
+    _time.sleep(3)
+
+
+# ════════════════════════════════════════════════════════════════
+# STEP 7 — Fill booking form (per service type)
+# ════════════════════════════════════════════════════════════════
+
+def fill_booking_form(driver, timeout=15):
+    """Auto-dispatch to the correct booking form based on SERVICE_TYPE."""
+    stype = _get_service_type()
+    if "airport" in stype:
+        direction = testdata.AIRPORT_DIRECTION.strip().lower()
+        if "pickup" in direction:
+            _fill_booking_pickup_from_airport(driver, timeout)
+        else:
+            _fill_booking_drop_to_airport(driver, timeout)
+    elif "local" in stype:
+        _fill_booking_local_rental(driver, timeout)
+    elif "outstation" in stype:
+        _fill_booking_outstation_trip(driver, timeout)
+    elif "self" in stype:
+        pass  # Self Drive has no booking form — query only
+
+
+def _fill_booking_pickup_from_airport(driver, timeout=15):
+    import time as _time
+    logging.info("Filling booking form: Pickup From Airport")
+    wait = get_wait(driver, timeout)
+
+    # Last Name
+    last_name = wait.until(EC.element_to_be_clickable((By.XPATH, locators.LAST_NAME_XPATH)))
+    scroll_into_view(driver, last_name)
+    last_name.click()
+    last_name.clear()
+    last_name.send_keys(testdata.AIRPORT_LAST_NAME)
+
+    # Flight No
+    flight_no = wait.until(EC.element_to_be_clickable((By.XPATH, locators.FLIGHT_NO_XPATH)))
+    scroll_into_view(driver, flight_no)
+    flight_no.click()
+    flight_no.clear()
+    flight_no.send_keys(testdata.PICKUP_FLIGHT_NO)
+    _time.sleep(0.5)
+
+    # Drop Address
+    drop_addr = wait.until(EC.element_to_be_clickable((By.XPATH, locators.DROP_ADDRESS_XPATH)))
+    scroll_into_view(driver, drop_addr)
+    drop_addr.click()
+    drop_addr.clear()
+    drop_addr.send_keys(testdata.PICKUP_DROP_ADDRESS)
+    _time.sleep(0.5)
+
+
+def _fill_booking_drop_to_airport(driver, timeout=15):
+    import time as _time
+    logging.info("Filling booking form: Drop To Airport")
+    wait = get_wait(driver, timeout)
+
+    # Last Name
+    last_name = wait.until(EC.element_to_be_clickable((By.XPATH, locators.LAST_NAME_XPATH)))
+    scroll_into_view(driver, last_name)
+    last_name.click()
+    last_name.clear()
+    last_name.send_keys(testdata.AIRPORT_LAST_NAME)
+
+    # Pickup Location (Google Places autocomplete)
+    pickup_loc = wait.until(EC.element_to_be_clickable((By.XPATH, locators.PICKUP_LOCATION_XPATH)))
+    scroll_into_view(driver, pickup_loc)
+    pickup_loc.click()
+    pickup_loc.clear()
+    pickup_loc.send_keys(testdata.DROP_PICKUP_LOCATION)
+    _time.sleep(2)
+    try:
+        first_suggestion = wait.until(EC.visibility_of_element_located(
+            (By.CSS_SELECTOR, "div.pac-container div.pac-item:first-child")
+        ))
+        first_suggestion.click()
+    except TimeoutException:
+        pickup_loc.send_keys(Keys.ARROW_DOWN)
+        pickup_loc.send_keys(Keys.ENTER)
+    _time.sleep(1)
+
+    # Pickup Address
+    pickup_addr = wait.until(EC.element_to_be_clickable((By.XPATH, locators.PICKUP_ADDRESS_XPATH)))
+    scroll_into_view(driver, pickup_addr)
+    pickup_addr.click()
+    pickup_addr.clear()
+    pickup_addr.send_keys(testdata.DROP_PICKUP_ADDRESS)
+    _time.sleep(0.5)
+
+
+def _fill_booking_outstation_trip(driver, timeout=15):
+    import time as _time
+    logging.info("Filling booking form: Outstation Trip")
+    wait = get_wait(driver, timeout)
+
+    # Last Name
+    last_name = wait.until(EC.element_to_be_clickable((By.XPATH, locators.LAST_NAME_XPATH)))
+    scroll_into_view(driver, last_name)
+    last_name.click()
+    last_name.clear()
+    last_name.send_keys(testdata.OUTSTATION_LAST_NAME)
+
+    # Pickup Address
+    pickup_addr = wait.until(EC.element_to_be_clickable((By.XPATH, locators.PICKUP_ADDRESS_XPATH)))
+    scroll_into_view(driver, pickup_addr)
+    pickup_addr.click()
+    pickup_addr.clear()
+    pickup_addr.send_keys(testdata.OUTSTATION_PICKUP_ADDRESS)
+    _time.sleep(0.5)
+
+
+def _fill_booking_local_rental(driver, timeout=15):
+    import time as _time
+    logging.info("Filling booking form: Local Rental")
+    wait = get_wait(driver, timeout)
+
+    # Last Name
+    last_name = wait.until(EC.element_to_be_clickable((By.XPATH, locators.LAST_NAME_XPATH)))
+    scroll_into_view(driver, last_name)
+    last_name.click()
+    last_name.clear()
+    last_name.send_keys(testdata.LOCAL_RENTAL_LAST_NAME)
+
+    # Pickup Address
+    pickup_addr = wait.until(EC.element_to_be_clickable((By.XPATH, locators.PICKUP_ADDRESS_XPATH)))
+    scroll_into_view(driver, pickup_addr)
+    pickup_addr.click()
+    pickup_addr.clear()
+    pickup_addr.send_keys(testdata.LOCAL_RENTAL_PICKUP_ADDRESS)
+    _time.sleep(0.5)
+
+
+# ════════════════════════════════════════════════════════════════
+# STEP 8 — T&C + Pay
+# ════════════════════════════════════════════════════════════════
+
+def tick_tnc_and_pay(driver, timeout=15):
+    import time as _time
+    wait = get_wait(driver, timeout)
+
+    logging.info("Ticking T&C checkbox")
+    checkbox = wait.until(EC.presence_of_element_located((By.XPATH, locators.TNC_CHECKBOX_XPATH)))
+    scroll_into_view(driver, checkbox)
+    if not checkbox.is_selected():
+        driver.execute_script("arguments[0].click();", checkbox)
+    logging.info("T&C checkbox ticked")
+    _time.sleep(1)
+
+    logging.info("Clicking Pay button")
+    safe_click(driver, By.XPATH, locators.PAY_BUTTON_XPATH)
+    logging.info("Pay button clicked")
+    _time.sleep(3)
