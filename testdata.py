@@ -8,14 +8,14 @@ DROP_TO_AIRPORT_VALUE = "Drop To Airport"
 DROP_AIRPORT_CITY_VALUE = "Bengaluru"
 
 # pickup date value (use exact format your app expects, e.g., "25/02/2026")
-PICKUP_DATE_VALUE = "28-04-2025"
+PICKUP_DATE_VALUE = "28-04-2026"
 
 # start time value (exact format, e.g., "10:30 AM" or "10:30")
-START_TIME_VALUE = "03:00"
+START_TIME_VALUE = "10:30 AM"
 
 # car name to book (exact name shown on results page)
 # e.g. "Honda City", "Toyota Innova Crysta", "Toyota Hycross"
-BOOK_CAR_NAME = "Force Urbania"
+BOOK_CAR_NAME = "Toyota Innova Crysta"
 
 # Sign In with OTP - mobile number (10-digit Indian number)
 MOBILE_NUMBER = "6239677566"

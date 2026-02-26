@@ -29,7 +29,7 @@ class TestAirportTransfer(unittest.TestCase):
         logging.info("Setting up Chrome driver")
         options = webdriver.ChromeOptions()
         options.add_argument("--start-maximized")
-        # optional: run headless during CI: options.add_argument("--headless=new")
+        options.add_argument("--window-size=1920,1080")
         cls.driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
         cls.wait = methods.get_wait(cls.driver)
         # Count existing screenshots to continue numbering
@@ -45,7 +45,7 @@ class TestAirportTransfer(unittest.TestCase):
             pass
 
     def _take_screenshot(self, step_name):
-        """Take a screenshot when an error occurs, with incrementing count."""
+        """Take an instant screenshot when an error occurs."""
         TestAirportTransfer.screenshot_count += 1
         count = TestAirportTransfer.screenshot_count
         filename = f"error_{count}_{step_name}.png"

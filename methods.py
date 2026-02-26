@@ -200,16 +200,17 @@ def set_date(driver, date_xpath, date_value, timeout=15):
 def set_time(driver, time_xpath, time_value, timeout=15):
     """
     Set time using the custom dropdown with select_hour and select_minute.
-    time_value format: HH:MM (e.g. "03:00")
+    time_value format: "HH:MM" or "HH:MM AM/PM" (e.g. "10:30 AM", "13:00")
     Clicks the time input to open the dropdown, then selects hour and minute.
     """
     import time as _time
     from selenium.webdriver.support.ui import Select
 
-    # Parse time_value (HH:MM)
-    h, m = time_value.split(":")
-    hour_str = h.zfill(2)    # "03"
-    minute_str = m.zfill(2)  # "00"
+    # Parse time_value — strip AM/PM, split HH:MM
+    clean = time_value.strip().upper().replace(" AM", "").replace(" PM", "")
+    h, m = clean.split(":")
+    hour_str = h.strip().zfill(2)     # "10"
+    minute_str = m.strip().zfill(2)   # "30"
 
     wait = get_wait(driver, timeout)
 
@@ -243,27 +244,25 @@ def set_time(driver, time_xpath, time_value, timeout=15):
     _time.sleep(0.5)
 
     # Select minute (dropdown may close after hour selection, so re-open if needed)
-    if minute_str != "00":
-        # Need to select a non-default minute — re-open dropdown if closed
+    try:
+        dropdown = driver.find_element(By.CSS_SELECTOR, "div.dropdown-menu.show")
+        minute_select = dropdown.find_element(By.CSS_SELECTOR, "select.select_minute")
+        Select(minute_select).select_by_value(minute_str)
+        logging.info("Minute selected: %s", minute_str)
+    except (NoSuchElementException, StaleElementReferenceException):
+        # Dropdown closed, re-open by clicking time input
         try:
-            dropdown = driver.find_element(By.CSS_SELECTOR, "div.dropdown-menu.show")
-            minute_select = dropdown.find_element(By.CSS_SELECTOR, "select.select_minute")
-            Select(minute_select).select_by_value(minute_str)
-            logging.info("Minute selected: %s", minute_str)
-        except (NoSuchElementException, StaleElementReferenceException):
-            # Dropdown closed, re-open by clicking time input
-            try:
-                time_input = time_div.find_element(By.TAG_NAME, "input")
-                time_input.click()
-            except Exception:
-                time_div.click()
-            _time.sleep(0.5)
-            dropdown = wait.until(EC.visibility_of_element_located(
-                (By.CSS_SELECTOR, "div.dropdown-menu.show")
-            ))
-            minute_select = dropdown.find_element(By.CSS_SELECTOR, "select.select_minute")
-            Select(minute_select).select_by_value(minute_str)
-            logging.info("Minute selected (after reopen): %s", minute_str)
+            time_input = time_div.find_element(By.TAG_NAME, "input")
+            time_input.click()
+        except Exception:
+            time_div.click()
+        _time.sleep(0.5)
+        dropdown = wait.until(EC.visibility_of_element_located(
+            (By.CSS_SELECTOR, "div.dropdown-menu.show")
+        ))
+        minute_select = dropdown.find_element(By.CSS_SELECTOR, "select.select_minute")
+        Select(minute_select).select_by_value(minute_str)
+        logging.info("Minute selected (after reopen): %s", minute_str)
 
     # Close dropdown by clicking elsewhere
     try:
@@ -337,8 +336,35 @@ def fill_airport_transfer_form(driver):
 
 
 def click_search_ride(driver):
+    """Click Search Your Ride and check for error toasts/popups."""
+    import time as _time
+
     logging.info("Clicking Search Your Ride")
     safe_click(driver, By.XPATH, locators.SEARCH_RIDE_BUTTON_XPATH)
+
+    # Wait briefly for any error toast/popup to appear
+    _time.sleep(2)
+
+    # Check for error toasts (e.g. "Please select pickup date")
+    error_selectors = [
+        "div.toast-body",
+        "div.toast-message",
+        "div.Toastify__toast--error",
+        "div.alert-danger",
+        "div.swal2-popup",
+        "div.toast.show",
+    ]
+    for sel in error_selectors:
+        try:
+            error_el = driver.find_element(By.CSS_SELECTOR, sel)
+            if error_el.is_displayed():
+                error_text = error_el.text.strip()
+                logging.error("Error toast detected after Search: %s", error_text)
+                raise Exception(f"Search Your Ride error: {error_text}")
+        except NoSuchElementException:
+            continue
+
+    logging.info("Search Your Ride clicked — no error toast detected")
 
 
 def click_book_now(driver, timeout=15):
