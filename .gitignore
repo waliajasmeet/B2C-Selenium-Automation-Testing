@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Screenshots (generated at runtime)
+screenshots/
+
+# Allure test reports (generated at runtime)
+allure-report/
+allure-report-html/
+allure-results/
+allure-report.zip
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

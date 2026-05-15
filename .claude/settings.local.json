@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(allure generate allure-results --clean --single-file -o allure-report-html)",
+      "Bash(start allure-report-html/index.html)",
+      "Bash(start \"\" \"allure-report-html\\\\index.html\")"
+    ]
+  }
+}
